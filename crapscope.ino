@@ -1,6 +1,6 @@
 /*
  * CrapScope
- * Version: 0.2a
+ * Version: 0.2c
  * Authors: programagor & woodbin
  * 
  * Interfaces with TFT LCD screen, 
@@ -63,10 +63,16 @@ void setup(void) {
   pinMode(SIGNAL,INPUT); // Probe is input
   digitalWrite(SIGNAL,LOW); // Ensure no pull-up
   
+  /* Set faster sampling rate */
+  bitClear(ADCSRA,ADPS0); 
+  bitSet(ADCSRA,ADPS1); 
+  bitClear(ADCSRA,ADPS2);
+  
   Serial.begin(9600);
+  
   init_tft();
 
-  samp_delay=1000; // Adjust sample rate here
+  samp_delay=10; // Adjust sample rate here
   
   scale=1.0; // Default is no vertical scaling
   disp_delay=250;
@@ -152,7 +158,7 @@ void init_tft(){
   tft.setTextSize(2);
   tft.print(F("CrapScope ver:0.2"));
   tft.setTextColor(RED);
-  tft.print(F("b"));
+  tft.print(F("c"));
   tft.setTextSize(1);
   tft.setCursor(180, 230);
   tft.print(F("programagor & woodbin"));
