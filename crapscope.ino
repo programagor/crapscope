@@ -48,50 +48,77 @@
 Adafruit_TFTLCD tft(LCD_CS, LCD_CD, LCD_WR, LCD_RD, LCD_RESET);
 
 uint16_t buffer[2][320-40]; // Two buffers so that old plot can be erased
-bool p; // Buffer selector
+bool p=0; // Buffer selector
+
+unsigned int samp_delay; // Sampling period (plus acquisition delay) [microseconds]
+
+int w , h; // TFT width and height
+
+float scale; // Vertical stretching of plots around mid-line
+unsigned int disp_delay; // Delay between display refreshes [milliseconds]
 
 
-float scale;
-
+/* --- Main setup function --- */
 void setup(void) {
-  Serial.begin(9600);
-    init_tft();
-Serial.println(RED);
-Serial.println(CYAN);
-Serial.println(GREEN);
-
-
-scale=1.0; 
-
-
-
-}
-
-void loop(void) {
-  p=!p;
-  /* Read values into buffer */
-  pinMode(SIGNAL, INPUT);
-  for (uint16_t i=0;i<(320-40);i++){
-    buffer[p][i]=analogRead(SIGNAL); //  * (5.0 / 1023.0)
-    delayMicroseconds(1000); 
-  }
-  /* Draw values */
-  for(int x=1;x<320-40;x++){
-    tft.drawLine(x+20,(int)(240-20-buffer[!p][x-1]*(5.0/256.0)*10*scale+(scale-1)*98),x+21,(int)(240-20-buffer[!p][x]*(5.0/256.0)*10*scale+(scale-1)*98),BLACK);
-  }
-
-draw_grid();
+  pinMode(SIGNAL,INPUT); // Probe is input
+  digitalWrite(SIGNAL,LOW); // Ensure no pull-up
   
-  for(int x=1;x<320-40;x++){
-    tft.drawLine(x+20,(int)(240-20-buffer[p][x-1]*(5.0/256.0)*10*scale+(scale-1)*98),x+21,(int)(240-20-buffer[p][x]*(5.0/256.0)*10*scale+(scale-1)*98),GREEN);
-  }
-  //delay(250);
+  Serial.begin(9600);
+  init_tft();
+
+  samp_delay=1000; // Adjust sample rate here
+  
+  scale=1.0; // Default is no vertical scaling
+  disp_delay=250;
 }
 
 
-void init_tft(){
- tft.reset();
+/* --- Main loop function --- */
+void loop(void) {
+  /* Read values into buffer */
+  for (uint16_t i=0;i<(320-40);i++){
+    buffer[p][i]=analogRead(SIGNAL);
+    delayMicroseconds(samp_delay); 
+  }
+  
+  /* Draw values */
+  /* First, draw black line over previous plot */
+  uint16_t y_prev=a2y(buffer[p^1][0]);
+  for(uint16_t x=1;x<320-40;x++){
+    uint16_t y=a2y(buffer[p^1][x]);
+    tft.drawLine(x+20-1,y_prev,x+20,y,BLACK);
+    y_prev=y;
+  }
+  /* Then restore the grid */
+  draw_grid();
 
+  /* And then plot the new line */
+  y_prev=a2y(buffer[p][0]);
+  for(uint16_t x=1;x<320-40;x++){
+    uint16_t y=a2y(buffer[p][x]);
+    tft.drawLine(x+20-1,y_prev,x+20,y,GREEN); // Line between previous and current datapoint
+    y_prev=y;
+  }
+
+  /* Let the user absorb all that data */
+  delay(disp_delay);
+
+  p^=1; // Swap buffers
+}
+
+
+/* Voltage to y-coordinate converter */
+/* Takes ADC conversion result, returns proper position on plot */
+uint16_t a2y(uint16_t v){
+  return (240-20-v*(5.0/256.0)*10*scale+(scale-1)*98); // Found empirically. TODO: redo properly
+}
+
+
+/* TFT display initialisator */
+void init_tft(){
+  tft.reset();
+
+  /* TFT model identification */
   uint16_t identifier = tft.readID();
 
   if(identifier == 0x9325) {
@@ -107,27 +134,36 @@ void init_tft(){
   } else {
     Serial.print(F("Unknown LCD driver chip: "));
     Serial.println(identifier, HEX);
-    identifier = 0x9341;
+    identifier = 0x9341; /* Magic number to make our TFT work */
   }
 
   tft.begin(identifier);
-  tft.setRotation(3);  
-  tft.fillScreen(BLACK);
 
-tft.setCursor(0, 0);
-tft.setTextColor(GREEN);
-tft.setTextSize(2);
-tft.println("CrapScope ver:0.2a");
-tft.setTextSize(1);
-tft.setCursor(180, 230);
-tft.println("programagor & woodbin");
+  tft.setRotation(3);
+
+  /* Store screen dimensions */
+  w=tft.width();
+  h=tft.height();
+  
+  /* Draw GUI */
+  tft.fillScreen(BLACK);
+  tft.setCursor(0, 0);
+  tft.setTextColor(GREEN);
+  tft.setTextSize(2);
+  tft.print(F("CrapScope ver:0.2"));
+  tft.setTextColor(RED);
+  tft.print(F("b"));
+  tft.setTextSize(1);
+  tft.setCursor(180, 230);
+  tft.print(F("programagor & woodbin"));
 }
 
+
+/* Grid refresher */
 void draw_grid(){
-  int w = tft.width() , h = tft.height();
-  tft.drawFastHLine(20, h/2 , w-40, 0x0000ff);
-  tft.drawFastHLine(20, 20  , w-40, 0x0000ff);
-  tft.drawFastHLine(20, h-20, w-40, 0x0000ff);
-  for(int x=20; x<=w-20; x+=(w-40)/8) tft.drawFastVLine(x, 20, h-40, 0x0000ff);
+  tft.drawFastHLine(20, h/2 , w-40, BLUE);
+  tft.drawFastHLine(20, 20  , w-40, RED);
+  tft.drawFastHLine(20, h-20, w-40+1, BLUE);
+  for(int x=20; x<=w-20; x+=(w-40)/8) tft.drawFastVLine(x, 20, h-40, BLUE);
 }
 
